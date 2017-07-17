@@ -34,7 +34,8 @@ func dependenciesSatisfied(dependencies []string) bool{
 	return true
 }
 
-
+//If an INDEX command is sent, this function will check to ensure all listed dependencies are already indexed
+//If a dependency isn't indexed, it will fail
 func index(pkg string, dependencies string) string {
 
 	var dep_parsed []string
@@ -69,15 +70,15 @@ func query(pkg string) string {
 //However I don't know a better way to do it without switching away from maps, and I'm reluctant to do that
 func remove(pkg string) string {
 	_, exists := d.dex[pkg]
-	if exists == true {
-		for _, value := range d.dex {
-			for i := 0; i < len(value); i++ {
-				if value[i] == pkg {
+	if exists == true {					//If the package is listed in our index
+		for _, value := range d.dex {			//Check every package we have in our index
+			for i := 0; i < len(value); i++ {	//Check each of those packages to see if they depend on the package that's being removed
+				if value[i] == pkg {		//If one of them does, this test fails and the package isn't removed
 					return "FAIL"
 				}
 			}
 		}
-
+		//If no other packages depend on this package, we can safely delete it
 		delete(d.dex, pkg)
 	}
 	return "OK"
@@ -87,13 +88,13 @@ func remove(pkg string) string {
 func parseData(conn net.Conn) {
 
 	var result string
-
 	defer conn.Close()
 
 	for {
 		//Take the raw connection and turn it into a string
 		message, err := bufio.NewReader(conn).ReadString('\n')
 		//Learned about io.EOF here: https://appliedgo.net/networking/
+		//Without this switch/case, any time a connection is closed the server freaks out
 		switch {
 		case err == io.EOF:
 			e := "Reached EOF"
@@ -104,12 +105,14 @@ func parseData(conn net.Conn) {
 			fmt.Println(e)
 			return
 		}
-		fmt.Println("Message Received:", string(message))
+		
+		//fmt.Println("Message Received:", string(message))
 
 		//Trim the newline character from the end so we can parse the message
 		message = strings.TrimSuffix(message, "\n")
 
 		//Next we separate the string into three parts
+		//If there aren't three parts, the message was formatted improperly
 		data := strings.Split(message, "|")
 		if len(data) < 3 {
 			e := "Not enough pipe-separated fields in the message"
@@ -122,9 +125,9 @@ func parseData(conn net.Conn) {
 			pkg := data[1]
 			dependencies := data[2]
 
-			fmt.Println("Command given is:", string(command))
-			fmt.Println("Package given is:", string(pkg))
-			fmt.Println("That package depends on:", string(dependencies))
+			//fmt.Println("Command given is:", string(command))
+			//fmt.Println("Package given is:", string(pkg))
+			//fmt.Println("That package depends on:", string(dependencies))
 
 			d.Lock()
 
@@ -144,14 +147,15 @@ func parseData(conn net.Conn) {
 			d.Unlock()
 		}
 
-		fmt.Println("Sending response", result+"\n")
+		//fmt.Println("Sending response", result+"\n")
+		
 		conn.Write([]byte(result + "\n"))
 	}
 }
 
 
 func main() {
-
+	//Create server listening on 8080
 	ln, err := net.Listen("tcp", ":8080")
 	if err != nil {
 		e := "Error creating listener"
@@ -167,6 +171,5 @@ func main() {
 		}
 
 		go parseData(conn)
-		fmt.Println("Got through parseData")
 	}
 }
