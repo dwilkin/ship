@@ -7,14 +7,26 @@ import (
 	"strings"
 	"os"
 	"io"
+	"sync"
 )
 
-var dex = make(map[string][]string)  //The map we'll use to store packages and their dependencies
+//We need a struct because we need a mutex
+type Index struct {
+	sync.Mutex
+	dex map[string][]string
+}
+
+//We need to initialize the map
+func initIndex() Index {
+	return Index{dex: make(map[string][]string)}
+}
+
+var d = initIndex() //This is the map in which we'll be storing the index
 
 //Ensures that all dependencies of a package are indexed prior to indexing a new package
 func dependenciesSatisfied(dependencies []string) bool{
 	for i := 0; i < len(dependencies); i++ {
-		_, exists := dex[dependencies[i]]
+		_, exists := d.dex[dependencies[i]]
 		if exists == false {
 			return false
 		}
@@ -32,20 +44,20 @@ func index(pkg string, dependencies string) string {
 	if dependencies != "" {
 		dep_parsed = strings.Split(dependencies, ",")
 		if dependenciesSatisfied(dep_parsed) == true {
-			dex[pkg] = dep_parsed
+			d.dex[pkg] = dep_parsed
 		} else {
 			return "FAIL"
 		}
 	} else {
 		//If there are no dependencies, we can simply install the package with no listed dependencies
-		dex[pkg] = nil
+		d.dex[pkg] = nil
 	}
 	return "OK"
 }
 
 //Just checks to see if the package is already indexed or not
 func query(pkg string) string {
-	_, exists := dex[pkg]
+	_, exists := d.dex[pkg]
 	if exists == false {
 		return "FAIL"
 	}
@@ -54,11 +66,11 @@ func query(pkg string) string {
 
 //This is the tricky one because I didn't use a tree, I just used a map.
 //I know enough to know that this is very bad from a big O perspective
-//However I don't know a better way to do it without switching away from maps
+//However I don't know a better way to do it without switching away from maps, and I'm reluctant to do that
 func remove(pkg string) string {
-	_, exists := dex[pkg]
+	_, exists := d.dex[pkg]
 	if exists == true {
-		for _, value := range dex {
+		for _, value := range d.dex {
 			for i := 0; i < len(value); i++ {
 				if value[i] == pkg {
 					return "FAIL"
@@ -66,7 +78,7 @@ func remove(pkg string) string {
 			}
 		}
 
-		delete(dex, pkg)
+		delete(d.dex, pkg)
 	}
 	return "OK"
 }
@@ -114,6 +126,8 @@ func parseData(conn net.Conn) {
 			fmt.Println("Package given is:", string(pkg))
 			fmt.Println("That package depends on:", string(dependencies))
 
+			d.Lock()
+
 			//based on the command sent
 			switch command {
 			case "INDEX":
@@ -127,6 +141,7 @@ func parseData(conn net.Conn) {
 				fmt.Println(e, string(command))
 				result = "ERROR"
 			}
+			d.Unlock()
 		}
 
 		fmt.Println("Sending response", result+"\n")
