@@ -97,7 +97,7 @@ func parseData(conn net.Conn) {
 		//Without this switch/case, any time a connection is closed the server freaks out
 		switch {
 		case err == io.EOF:
-			e := "Reached EOF"
+			e := "Connection closed by client"
 			fmt.Println(e)
 			return
 		case err != nil:
